@@ -447,7 +447,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         function partsOnloadend(part) {
            return function () {
               var secret = con.aws_secret;
-              var md5_digest = CryptoJS.HmacSHA1(this.result, secret);
+              var md5_digest = btoa(CryptoJS.MD5(this.result));
 
               l.d(['part #', part, ' MD5 digest is ', md5_digest].join(''));
               parts[part].md5_digest = md5_digest;
