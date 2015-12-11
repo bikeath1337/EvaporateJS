@@ -24,6 +24,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 (function() {
 
+  var SparkMD5 = require('spark-md5');
+  var base64 = require('base-64');
+
   var Evaporate = function(config){
 
      // TODO: Update Supported
@@ -446,10 +449,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
         function partsOnloadend(part) {
            return function () {
-              var md5_digest = btoa(CryptoJS.MD5(this.result));
-
+              var md5_digest= SparkMD5.hashBinary(this.result, true);
+              var md5Encoded = base64.encode(md5_digest);
               l.d(['part #', part, ' MD5 digest is ', md5_digest].join(''));
-              parts[part].md5_digest = md5_digest;
+              parts[part].md5_digest = md5Encoded;
 
               delete parts[part].reader; // release potentially large memory allocation
 
