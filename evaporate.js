@@ -17,7 +17,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 *  version 0.0.2                                                                                  *
 *                                                                                                  *
 *  TODO:                                                                                           *
-*       calculate MD5s and send with PUTs                                                          *
 *       post eTags to application server to allow resumability after client-side crash/restart      *
 *                                                                                                  *
 *                                                                                                  *
@@ -27,6 +26,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
   var Evaporate = function(config){
 
+     // TODO: Update Supported
      this.supported = !((typeof(File)=='undefined') ||
         (typeof(Blob)=='undefined') ||
         !(!!Blob.prototype.webkitSlice || !!Blob.prototype.mozSlice || Blob.prototype.slice) ||
@@ -51,7 +51,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         maxRetryBackoffSecs: 300,
         progressIntervalMS: 500,
         cloudfront: false,
-        encodeFilename: true
+        encodeFilename: true,
+        checkMd5Integrity: false
 
      }, config);
 
@@ -187,6 +188,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
      function FileUpload(file){
 
         var me = this, parts = [], progressTotalInterval, progressPartsInterval, countUploadAttempts = 0, xhrs = [];
+        var numParts, numPartsProcessed = 0;
         extend(me,file);
 
         me.start = function(){
@@ -254,7 +256,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
                  me.uploadId = match[1];
                  l.d('requester success. got uploadId ' + me.uploadId);
                  makeParts();
-                 processPartsList();
+                 if (!requiresMd5()) {
+                    processPartsList();
+                 }
               }else{
                  initiate.onErr();
               }
@@ -262,6 +266,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
            setupRequest(initiate);
            authorizedSend(initiate);
+        }
+
+        function requiresMd5() {
+           return con.checkMd5Integrity && me.file.size > 0;
         }
 
 
@@ -286,13 +294,20 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
               path: getPath() + '?partNumber='+partNumber+'&uploadId='+me.uploadId,
               step: 'upload #' + partNumber,
               x_amz_headers: me.xAmzHeadersAtUpload,
+              md5_digest: part.md5_digest,
               attempts: part.attempts
            };
-           // TODO: add md5
 
            upload.onErr = function (xhr, isOnError){
+              var oParser = new DOMParser();
+              var oDOM = oParser.parseFromString(xhr.responseText, "text/xml");
+              var code = oDOM.getElementsByTagName("Code");
+              var msg = oDOM.getElementsByTagName("Message");
+              code = code.length ? code[0].innerHTML : '';
+              msg = msg.length ? msg[0].innerHTML : '';
 
               var msg = 'problem uploading part #' + partNumber + ',   http status: ' + xhr.status +
+              ',   code: ' + code + ', message: ' + msg +
               ',   hasErrored: ' + !!hasErrored + ',   part status: ' + part.status +
               ',   readyState: ' + xhr.readyState + (isOnError ? ',   isOnError' : '');
 
@@ -344,12 +359,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
               part.loadedBytes = evt.loaded;
            };
 
-           var slicerFn = (me.file.slice ? 'slice' : (me.file.mozSlice ? 'mozSlice' : 'webkitSlice'));
-           // browsers' implementation of the Blob.slice function has been renamed a couple of times, and the meaning of the 2nd parameter changed. For example Gecko went from slice(start,length) -> mozSlice(start, end) -> slice(start, end). As of 12/12/12, it seems that the unified 'slice' is the best bet, hence it being first in the list. See https://developer.mozilla.org/en-US/docs/DOM/Blob for more info.
-
            upload.toSend = function() {
-              var slice= me.file[slicerFn](part.start, part.end);
-              l.d('sending part # ' + partNumber + ' (bytes ' + part.start + ' -> ' + part.end + ')  reported length: ' + slice.size);
+              var slice = getFilePart(me.file, part.start, part.end);
+              l.d('part # ' + partNumber + ' (bytes ' + part.start + ' -> ' + part.end + ')  reported length: ' + slice.size);
               if(!part.isEmpty && slice.size === 0) // issue #58
               {
                  l.w('  *** WARN: blob reporting size of 0 bytes. Will try upload anyway..');
@@ -432,21 +444,52 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
            authorizedSend(complete);
         }
 
+        function partsOnloadend(part) {
+           return function () {
+              var secret = con.aws_secret;
+              var md5_digest = CryptoJS.HmacSHA1(this.result, secret);
+
+              l.d(['part #', part, ' MD5 digest is ', md5_digest].join(''));
+              parts[part].md5_digest = md5_digest;
+
+              delete parts[part].reader; // release potentially large memory allocation
+
+              numProcessed += 1;
+
+              if (numProcessed === numParts) {
+                 l.d('All parts have MD5 digests');
+                 processPartsList();
+              }
+           }
+        }
+
 
         function makeParts(){
 
-           var numParts = Math.ceil(me.file.size / con.partSize) || 1; // issue #58
+           numParts = Math.ceil(me.file.size / con.partSize) || 1; // issue #58
+           numProcessed = 0;
+
            for (var part = 1; part <= numParts; part++){
 
+              var start = (part-1) * con.partSize,
+                  end =  part * con.partSize;
               parts[part] = {
                  status: PENDING,
-                 start: (part-1)*con.partSize,
-                 end: (part*con.partSize),
+                 start: start,
+                 end: end,
                  attempts: 0,
                  loadedBytes: 0,
                  loadedBytesPrevious: null,
+                 md5_digest: null,
                  isEmpty: (me.file.size === 0) // issue #58
               };
+
+              if (requiresMd5()) {
+                 parts[part].reader = new FileReader();
+                 parts[part].reader.onloadend = partsOnloadend(part);
+                 parts[part].reader.readAsBinaryString(getFilePart(me.file, start, end));
+
+              }
            }
         }
 
@@ -623,6 +666,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
                  xhr.setRequestHeader('Content-Type', requester.contentType);
               }
 
+              if (requester.md5_digest) {
+                 xhr.setRequestHeader('Content-MD5', requester.md5_digest);
+              }
               xhr.onreadystatechange = function(){
 
                  if (xhr.readyState == 4){
@@ -731,7 +777,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 
            to_sign = request.method+'\n'+
-              '\n'+
+              (request.md5_digest || '')+'\n'+
               (request.contentType || '')+'\n'+
               '\n'+
               x_amz_headers +
@@ -765,6 +811,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
            obj1[key2]=obj2[key2];
         }
         return obj1;
+     }
+
+     function getFilePart(file, start, end) {
+        var slicerFn = (file.slice ? 'slice' : (file.mozSlice ? 'mozSlice' : 'webkitSlice'));
+        // browsers' implementation of the Blob.slice function has been renamed a couple of times, and the meaning of the 2nd parameter changed. For example Gecko went from slice(start,length) -> mozSlice(start, end) -> slice(start, end). As of 12/12/12, it seems that the unified 'slice' is the best bet, hence it being first in the list. See https://developer.mozilla.org/en-US/docs/DOM/Blob for more info.
+        return file[slicerFn](start, end);
      }
 
   };
