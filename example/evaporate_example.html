@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
    <meta name="viewport" content="width=device-width, initial-scale=1">
+   <link rel='shortcut icon' href='../../favicon.ico' type='image/x-icon'/>
    <title>Evaporate Example</title>
 
    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
    <link rel="stylesheet" type="text/css" href="assets/example.css">
 
-   <script src="https://sdk.amazonaws.com/js/aws-sdk-2.4.13.min.js"></script>
+   <script src="assets/aws-sdk-2.4.13.min.js"></script>
    <script language="javascript" type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
    <script language="javascript" type="text/javascript" src="assets/progressbar-1.0.1.min.js"></script>
    <script language="javascript" type="text/javascript" src="../evaporate.js"></script>
@@ -37,13 +38,13 @@
    var files, file_id = 0, file_ids = [];
 
    // Change these to reflect your local settings
-   var AWS_KEY = 'AWS KEY',
-           AWS_BUCKET = 's3 bucket name',
-           SIGNER_URL = 'http://localhost:3000/sign_auth';
+   var AWS_KEY = 'AKIAI35IN4YICFYEONOA',
+           AWS_BUCKET = 'bikeath1337-evaporate',
+           SIGNER_URL = 'http://localhost:3000/signv4_auth';
 
    $("#awsKey").text(AWS_KEY);
    $("#s3Bucket").text(AWS_BUCKET);
-   $("#SIGNERURL").text(SIGNER_URL);
+   $("#signerUrl").text(SIGNER_URL);
 
    var _e_ = new Evaporate({
       signerUrl: SIGNER_URL,
@@ -52,7 +53,10 @@
       cloudfront: true,
       computeContentMd5: true,
       cryptoMd5Method: function (data) { return AWS.util.crypto.md5(data, 'base64'); },
-      logging: true,
+      awsSignatureVersion: '4',
+      cryptoHexEncodedHash256: function (data) { return AWS.util.crypto.sha256(data, 'hex'); },
+      logging: false,
+      maxConcurrentParts: 6,
       evaporateChanged: function (file, evaporatingCount) {
          $('#totalParts').text(evaporatingCount);
          if (evaporatingCount > 0) {
