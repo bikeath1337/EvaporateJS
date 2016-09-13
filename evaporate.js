@@ -151,57 +151,6 @@
             l = noOpLogger();
         }
 
-        var historyCache = {
-            supported: (function () {
-                var result = false;
-                if (typeof window !== 'undefined') {
-                    if (!('localStorage' in window)) {
-                        return result;
-                    }
-                } else {
-                    return result;
-                }
-
-                // Try to use storage (it might be disabled, e.g. user is in private mode)
-                try {
-                    localStorage.setItem('___test', 'OK');
-                    var test = localStorage.getItem('___test');
-                    localStorage.removeItem('___test');
-
-                    result = test === 'OK';
-                } catch (e) {
-                    return result;
-                }
-
-                return result;
-            }()),
-            getItem: function (key) {
-                if (this.supported) {
-                    return localStorage.getItem(key)
-                }
-            },
-            setItem: function (key, value) {
-                if (this.supported) {
-                    return localStorage.setItem(key, value);
-                }
-            },
-            clear: function () {
-                if (this.supported) {
-                    return localStorage.clear();
-                }
-            },
-            key: function (key) {
-                if (this.supported) {
-                    return localStorage.key(key);
-                }
-            },
-            removeItem: function (key) {
-                if (this.supported) {
-                    return localStorage.removeItem(key);
-                }
-            }
-        };
-
         var url;
         if (con.aws_url) {
             url = [con.aws_url];
@@ -416,7 +365,7 @@
 
                 var awsKey = me.name;
 
-                getUnfinishedFileUpload();
+                localCache.getUnfinishedFileUpload(me);
 
                 if (typeof me.uploadId === 'undefined') {
                     // New File
@@ -534,7 +483,7 @@
                 if (con.computeContentMd5 && me.file.size > 0) {
                     processPartsListWithMd5Digests();
                 } else {
-                    createUploadFile();
+                    localCache.completeUpload(me, s3Parts[1]);
                 }
                 processPartsToUpload();
             }
@@ -857,7 +806,7 @@
                     part.md5_digest = md5_digest;
 
                     if (part.part === 1) {
-                        createUploadFile();
+                        localCache.createUploadFile(me, s3Parts[1]);
                     }
 
                     delete part.reader; // release potentially large memory allocation
@@ -890,7 +839,7 @@
                             part.reader.readAsArrayBuffer(getFilePart(me.file, part.start, part.end));
                         } else { // We already calculated the first part's md5_digest
                             part.md5_digest = me.firstMd5Digest;
-                            createUploadFile();
+                            localCache.createUploadFile(me, s3Parts[1]);
                             setTimeout(processPartsListWithMd5Digests, 1500);
                         }
                         break;
@@ -946,7 +895,7 @@
                 list.onErr = function (xhr) {
                     if (xhr.status === 404) {
                         // Success! Parts are not found because the uploadid has been cleared
-                        removeUploadFile();
+                        localCache.removeUploadFile(me);
                         me.info('upload canceled');
                         fileTotalBytesUploaded = 0;
                     } else {
@@ -996,7 +945,7 @@
                     if (xhr.status === 404) {
                         // Success! Upload is no longer recognized, so there is nothing to fetch
                         me.info(['uploadId ', me.uploadId, ' does not exist.'].join(''));
-                        removeUploadFile();
+                        localCache.removeUploadFile(me);
                         monitorProgress();
                         makeParts();
                         processPartsToUpload();
@@ -1079,72 +1028,11 @@
                 };
             }
 
-            function createUploadFile() {
-                var fileKey = uploadKey(me),
-                    newUpload = {
-                        awsKey: me.name,
-                        bucket: con.bucket,
-                        uploadId: me.uploadId,
-                        fileSize: me.file.size,
-                        fileType: me.file.type,
-                        lastModifiedDate: dateISOString(me.file.lastModifiedDate),
-                        partSize: con.partSize,
-                        signParams: con.signParams,
-                        createdAt: new Date().toISOString()
-                    };
-                if (con.computeContentMd5 && numParts && typeof s3Parts[1].md5_digest !== 'undefined') {
-                    newUpload.firstMd5Digest = s3Parts[1].md5_digest;
-                }
-                saveUpload(fileKey, newUpload);
-            }
-
             function completeUploadFile() {
-                var uploads = getSavedUploads(),
-                    upload = uploads[uploadKey(me)];
-
-                if (typeof upload !== 'undefined') {
-                    upload.completedAt = new Date().toISOString();
-                    upload.eTag = me.eTag;
-                    historyCache.setItem('awsUploads', JSON.stringify(uploads));
-                }
-
+                localCache.completeUpload(me);
                 setStatus(COMPLETE);
                 me.progress(1.0);
 
-            }
-
-            function removeUploadFile() {
-                if (typeof me.file !== 'undefined') {
-                    removeUpload(uploadKey(me));
-                }
-            }
-
-            function getUnfinishedFileUpload() {
-                var savedUploads = getSavedUploads(true),
-                    u = savedUploads[uploadKey(me)];
-
-                if (canRetryUpload(u)) {
-                    me.uploadId = u.uploadId;
-                    me.name = u.awsKey;
-                    me.eTag = u.eTag;
-                    me.firstMd5Digest = u.firstMd5Digest;
-                    me.signParams = u.signParams;
-                }
-            }
-
-            function canRetryUpload(u) {
-                // Must be the same file name, file size, last_modified, file type as previous upload
-                if (typeof u === 'undefined') {
-                    return false;
-                }
-                var completedAt = new Date(u.completedAt || FAR_FUTURE);
-
-                // check that the part sizes and bucket match, and if the file name of the upload
-                // matches if onlyRetryForSameFileName is true
-                return con.partSize === u.partSize &&
-                    completedAt > HOURS_AGO &&
-                    con.bucket === u.bucket &&
-                    (con.onlyRetryForSameFileName ? me.name === u.awsKey : true);
             }
 
             function backOffWait(attempts) {
@@ -1735,54 +1623,158 @@
             return parser.parseFromString(body, "text/xml");
         }
 
-        function getSavedUploads(purge) {
-            var uploads = JSON.parse(historyCache.getItem('awsUploads') || '{}');
-
-            if (purge) {
-                for (var key in uploads) {
-                    if (uploads.hasOwnProperty(key)) {
-                        var upload = uploads[key],
-                            completedAt = new Date(upload.completedAt || FAR_FUTURE);
-
-                        if (completedAt < HOURS_AGO) {
-                            // The upload is recent, let's keep it
-                            delete uploads[key];
-                        }
-                    }
-                }
-
-                historyCache.setItem('awsUploads', JSON.stringify(uploads));
-            }
-
-            return uploads;
-        }
-
-        function uploadKey(fileUpload) {
-            // The key tries to give a signature to a file in the absence of its path.
-            // "<filename>-<mimetype>-<modifieddate>-<filesize>"
-            return [
-                fileUpload.file.name,
-                fileUpload.file.type,
-                dateISOString(fileUpload.file.lastModifiedDate),
-                fileUpload.file.size
-            ].join("-");
-        }
-
-        function saveUpload(uploadKey, upload) {
-            var uploads = getSavedUploads();
-            uploads[uploadKey] = upload;
-            historyCache.setItem('awsUploads', JSON.stringify(uploads));
-        }
-
-        function removeUpload(uploadKey) {
-            var uploads = getSavedUploads();
-            delete uploads[uploadKey];
-            historyCache.setItem('awsUploads', JSON.stringify(uploads));
-        }
-
         function nodeValue(parent, nodeName) {
             return parent.getElementsByTagName(nodeName)[0].textContent;
         }
+
+        var LocalCache = function () {
+
+            this.createUploadFile = function (me, first_part) {
+                var fileKey = uploadKey(me),
+                    newUpload = {
+                        awsKey: me.name,
+                        bucket: con.bucket,
+                        uploadId: me.uploadId,
+                        fileSize: me.file.size,
+                        fileType: me.file.type,
+                        lastModifiedDate: dateISOString(me.file.lastModifiedDate),
+                        partSize: con.partSize,
+                        signParams: con.signParams,
+                        createdAt: new Date().toISOString()
+                    };
+                if (con.computeContentMd5 && first_part && typeof first_part.md5_digest !== 'undefined') {
+                    newUpload.firstMd5Digest = first_part.md5_digest;
+                }
+                saveUpload(fileKey, newUpload);
+            };
+
+            this.removeUploadFile = function (file) {
+                if (typeof file.file !== 'undefined') {
+                    var uploads = getSavedUploads();
+                    delete uploads[uploadKey(file)];
+                    setItem('awsUploads', JSON.stringify(uploads));
+                }
+            };
+
+            this.getUnfinishedFileUpload = function (file) {
+                var savedUploads = getSavedUploads(true),
+                    upload = savedUploads[uploadKey(file)];
+
+                if (canRetryUpload(file, upload)) {
+                    file.uploadId = upload.uploadId;
+                    file.name = upload.awsKey;
+                    file.eTag = upload.eTag;
+                    file.firstMd5Digest = upload.firstMd5Digest;
+                    file.signParams = upload.signParams;
+                }
+            };
+
+            this.completeUpload = function (file) {
+                var uploads = getSavedUploads(),
+                    upload = uploads[uploadKey(file)];
+
+                if (typeof upload !== 'undefined') {
+                    upload.completedAt = new Date().toISOString();
+                    upload.eTag = file.eTag;
+                    setItem('awsUploads', JSON.stringify(uploads));
+                }
+
+            };
+
+            this.supported = (function () {
+                var result = false;
+                if (typeof window !== 'undefined') {
+                    if (!('localStorage' in window)) {
+                        return result;
+                    }
+                } else {
+                    return result;
+                }
+
+                // Try to use storage (it might be disabled, e.g. user is in private mode)
+                try {
+                    localStorage.setItem('___test', 'OK');
+                    var test = localStorage.getItem('___test');
+                    localStorage.removeItem('___test');
+
+                    result = test === 'OK';
+                } catch (e) {
+                    return result;
+                }
+
+                return result;
+            }());
+
+            function getSavedUploads(purge) {
+                var uploads = JSON.parse(getItem('awsUploads') || '{}');
+
+                if (purge) {
+                    for (var key in uploads) {
+                        if (uploads.hasOwnProperty(key)) {
+                            var upload = uploads[key],
+                                completedAt = new Date(upload.completedAt || FAR_FUTURE);
+
+                            if (completedAt < HOURS_AGO) {
+                                // The upload is recent, let's keep it
+                                delete uploads[key];
+                            }
+                        }
+                    }
+
+                    setItem('awsUploads', JSON.stringify(uploads));
+                }
+
+                return uploads;
+            }
+
+            function saveUpload(uploadKey, upload) {
+                var uploads = getSavedUploads();
+                uploads[uploadKey] = upload;
+                setItem('awsUploads', JSON.stringify(uploads));
+            }
+
+            function canRetryUpload(file, upload) {
+                // Must be the same file name, file size, last_modified, file type as previous upload
+                if (typeof upload === 'undefined') {
+                    return false;
+                }
+                var completedAt = new Date(upload.completedAt || FAR_FUTURE);
+
+                // check that the part sizes and bucket match, and if the file name of the upload
+                // matches if onlyRetryForSameFileName is true
+                return con.partSize === upload.partSize &&
+                    completedAt > HOURS_AGO &&
+                    con.bucket === upload.bucket &&
+                    (con.onlyRetryForSameFileName ? file.name === upload.awsKey : true);
+            }
+
+            function uploadKey(fileUpload) {
+                // The key tries to give a signature to a file in the absence of its path.
+                // "<filename>-<mimetype>-<modifieddate>-<filesize>"
+                return [
+                    fileUpload.file.name,
+                    fileUpload.file.type,
+                    dateISOString(fileUpload.file.lastModifiedDate),
+                    fileUpload.file.size
+                ].join("-");
+            }
+
+            var self = this;
+
+            function getItem(key) {
+                if (self.supported) {
+                    return localStorage.getItem(key)
+                }
+            }
+
+            function setItem(key, value) {
+                if (self.supported) {
+                    return localStorage.setItem(key, value);
+                }
+            }
+        };
+
+        var localCache = new LocalCache();
     };
 
     function uri(url) {
