@@ -1685,7 +1685,7 @@
 
             };
 
-            this.supported = (function () {
+            var supported = (function () {
                 var result = false;
                 if (typeof window !== 'undefined') {
                     if (!('localStorage' in window)) {
@@ -1763,16 +1763,14 @@
                 ].join("-");
             }
 
-            var self = this;
-
             function getItem(key) {
-                if (self.supported) {
+                if (supported) {
                     return localStorage.getItem(key)
                 }
             }
 
             function setItem(key, value) {
-                if (self.supported) {
+                if (supported) {
                     return localStorage.setItem(key, value);
                 }
             }
