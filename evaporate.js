@@ -2147,5 +2147,5 @@
   } else if (typeof window !== 'undefined') {
     window.Evaporate = Evaporate;
   }
-
+  window.Evaporate = Evaporate
 }());

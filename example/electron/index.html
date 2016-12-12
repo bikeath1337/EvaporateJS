@@ -12,13 +12,13 @@
     and Electron <script>document.write(process.versions.electron)</script>.
 
     <input type="file" id="files"   onchange="expose(this);"/>
-
+    <script language="javascript" type="text/javascript" src="../../evaporate.js"></script>
   <script>
     // You can also require other files to run in this process
     require('./renderer.js')
     const crypto = require('crypto')
     const fs = require('fs')
-    const Evaporate = require('evaporate')
+//    const Evaporate = require('evaporate')
 
       var AWS_KEY = '',
           AWS_BUCKET = '',
@@ -28,12 +28,13 @@
       var files = document.getElementById("files").files,
           keys = [];
       Evaporate.create({
+        partSize: 6 * 1024 *1024,
         signerUrl: SIGNER_URL,
         aws_key: AWS_KEY,
         bucket: AWS_BUCKET,
         readableStreams: true,
         readableStreamPartMethod: function (file, start, end) {
-          return fs.createReadStream('~/Desktop/' + file.name, {start: start, end: end});
+          return fs.createReadStream('/Users/bobbywallace/Desktop/' + file.name, {start: start, end: end});
         },
         cloudfront: true,
         awsSignatureVersion: "4",
@@ -54,7 +55,7 @@
                       name: name,
                       file: files[i],
                       started: function (f) { console.log('started', f); },
-                      progress: function (p, d) { console.log('progress', p); },
+                     // progress: function (p, d) { console.log('progress', p); },
                       error: function (m) { console.log('error:', m); }
                     }
                   )
