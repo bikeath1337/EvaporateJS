@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <title>Evaporate Example</title>
+
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+   <link rel="stylesheet" type="text/css" href="../assets/example.css">
+
+   <script src="https://sdk.amazonaws.com/js/aws-sdk-2.4.13.min.js"></script>
+   <script language="javascript" type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+   <script language="javascript" type="text/javascript" src="../assets/progressbar-1.0.1.min.js"></script>
+
+</head>
+<body>
+<div class="container-fluid">
+   <h1 id="header">EvaporateJS Example</h1>
+   <dl>
+      <dt>AWS Key</dt>
+      <dd id="awsKey">AWS Key</dd>
+      <dt>S3 Bucket</dt>
+      <dd id="s3Bucket">S3 Bucket</dd>
+      <dt>Signer Url</dt>
+      <dd id="signerUrl">Signer Url</dd>
+   </dl>
+   <input type="file" id="files"  multiple />
+   <button type="button" id="pause-all" class="btn btn-warning btn-sm glyphicon glyphicon-pause" title="Pause All"></button>
+   <button type="button" id="pause-all-force" class="btn btn-primary btn-sm glyphicon glyphicon-off" title="Force Pause All"></button>
+   <button type="button" id="resume" class="btn btn-success btn-sm glyphicon glyphicon-play" title="Resume All"></button>
+   <button type="button" id="cancel-all" class="btn btn-danger btn-sm glyphicon glyphicon-stop" title="Cancel All"></button>
+   <div><br/>Total parts in-progress: <span id="totalParts">0</span></div>
+   <div id="progress-container"></div>
+</div>
+
+<script language="javascript">
+
+  var worker = new Worker('evaporate_worker.js');
+  worker.addEventListener('message', function (e) {
+    console.log('Worker said: ', e.data);
+  }, false);
+
+  var AWS_KEY = 'AKIAI35IN4YICFYEONOA',
+      AWS_BUCKET = 'bikeath1337-evaporate',
+      SIGNER_URL = 'http://localhost:3000/sign_auth';
+
+  var evapConfig = {
+    signerUrl: SIGNER_URL,
+    aws_key: AWS_KEY,
+    bucket: AWS_BUCKET,
+    cloudfront: true,
+    computeContentMd5: true,
+    logging: true,
+    logging: false,
+    s3FileCacheHoursAgo: 1,
+    allowS3ExistenceOptimization: true
+  };
+  worker.postMessage({'cmd': 'create', 'config': evapConfig });
+
+   var files, file_id = 0, file_ids = [];
+   var filePromises = [], allCompleted;
+
+   // Change these to reflect your local settings
+   var AWS_KEY = 'AWS KEY',
+           AWS_BUCKET = 's3 bucket name',
+           SIGNER_URL = 'http://localhost:8080/sign_auth';
+
+   $("#awsKey").text(AWS_KEY);
+   $("#s3Bucket").text(AWS_BUCKET);
+   $("#signerUrl").text(SIGNER_URL);
+   $("#cancel-all").click(function () {
+     worker.postMessage({ 'cmd': 'cancel', 'msg': 'all' });
+   });
+
+  $('#files').change(function (evt) {
+    files = evt.target.files;
+
+    for (var i = 0; i < files.length; i++) {
+      var name = files[i].name + Math.random() * 100;
+
+      var fileKey = AWS_BUCKET + '/' + name;
+
+//      callback_methods = callbacks(files[i], fileKey, i);
+
+      var addConfig = {
+        name: name,
+        file: files[i]
+      };
+      var file = files[i];
+//      var cmd = new TextEncoder("utf-8").encode('add'),
+//          name = new TextEncoder("utf-8").encode(name);
+
+      worker.postMessage({ 'cmd': 'add', 'name': name,  file: file });
+
+//      var promise = _e_.add({
+//            name: name,
+//            file: files[i],
+//            started: callback_methods.started,
+//            complete: callback_methods.complete,
+//            cancelled: callback_methods.cancelled,
+//            progress: callback_methods.progress,
+//            error: callback_methods.error,
+//            warn: callback_methods.warn,
+//            paused: callback_methods.paused,
+//            pausing: callback_methods.pausing,
+//            resumed: callback_methods.resumed,
+//            nameChanged: callback_methods.nameChanged
+//          }
+//      )
+//          .then((function (requestedName) {
+//                return function (awsKey) {
+//                  if (awsKey === requestedName) {
+//                    console.log(awsKey, 'successfully uploaded!');
+//                  } else {
+//                    console.log('Did not re-upload', requestedName, 'because it exists as', awsKey);
+//                  }
+//                }
+//              })(name)
+//          );
+//
+//      filePromises.push(promise);
+//
+//      callback_methods.progress_clock.attr('file_id', file_id);
+//
+//      ["#pause-all",  "#pause-all-force", "#cancel-all"].forEach(function (v) { $(v).show(); });
+    }
+
+    allCompleted = Promise.all(filePromises)
+        .then(function () {
+          console.log('All files were uploaded successfully.');
+        }, function (reason) {
+          console.log('All files were not uploaded successfully:', reason);
+        })
+
+    $(evt.target).val('');
+
+  });
+
+
+</script>
+
+</body>
+</html>
