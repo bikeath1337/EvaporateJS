@@ -49,7 +49,6 @@
     bucket: AWS_BUCKET,
     cloudfront: true,
     computeContentMd5: true,
-    logging: true,
     logging: false,
     s3FileCacheHoursAgo: 1,
     allowS3ExistenceOptimization: true
@@ -77,51 +76,14 @@
     for (var i = 0; i < files.length; i++) {
       var name = files[i].name + Math.random() * 100;
 
-      var fileKey = AWS_BUCKET + '/' + name;
-
-//      callback_methods = callbacks(files[i], fileKey, i);
-
       var addConfig = {
         name: name,
         file: files[i]
       };
       var file = files[i];
-//      var cmd = new TextEncoder("utf-8").encode('add'),
-//          name = new TextEncoder("utf-8").encode(name);
 
       worker.postMessage({ 'cmd': 'add', 'name': name,  file: file });
 
-//      var promise = _e_.add({
-//            name: name,
-//            file: files[i],
-//            started: callback_methods.started,
-//            complete: callback_methods.complete,
-//            cancelled: callback_methods.cancelled,
-//            progress: callback_methods.progress,
-//            error: callback_methods.error,
-//            warn: callback_methods.warn,
-//            paused: callback_methods.paused,
-//            pausing: callback_methods.pausing,
-//            resumed: callback_methods.resumed,
-//            nameChanged: callback_methods.nameChanged
-//          }
-//      )
-//          .then((function (requestedName) {
-//                return function (awsKey) {
-//                  if (awsKey === requestedName) {
-//                    console.log(awsKey, 'successfully uploaded!');
-//                  } else {
-//                    console.log('Did not re-upload', requestedName, 'because it exists as', awsKey);
-//                  }
-//                }
-//              })(name)
-//          );
-//
-//      filePromises.push(promise);
-//
-//      callback_methods.progress_clock.attr('file_id', file_id);
-//
-//      ["#pause-all",  "#pause-all-force", "#cancel-all"].forEach(function (v) { $(v).show(); });
     }
 
     allCompleted = Promise.all(filePromises)

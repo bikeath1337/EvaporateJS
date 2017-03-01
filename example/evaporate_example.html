@@ -79,7 +79,7 @@
       computeContentMd5: true,
       cryptoMd5Method: function (data) { return AWS.util.crypto.md5(data, 'base64'); },
       cryptoHexEncodedHash256: function (data) { return AWS.util.crypto.sha256(data, 'hex'); },
-      logging: false,
+      logging: true,
       s3FileCacheHoursAgo: 1,
       allowS3ExistenceOptimization: true,
       customAuthMethod: customAuth? doNotUseUnsafeJavaScriptV4Signer : undefined,

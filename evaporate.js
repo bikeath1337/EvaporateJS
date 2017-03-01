@@ -17,7 +17,7 @@
  *  version 2.0.9                                                                                  *
  *                                                                                                 *
  ***************************************************************************************************/
-
+var X_Evaporate;
 (function () {
   "use strict";
 
@@ -2147,5 +2147,5 @@
   } else if (typeof window !== 'undefined') {
     window.Evaporate = Evaporate;
   }
-
+  X_Evaporate = Evaporate;
 }());

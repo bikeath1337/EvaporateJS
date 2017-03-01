@@ -2,16 +2,24 @@
 
 importScripts('http://localhost/~bobbywallace/EvaporateJS/evaporate.js', 'https://sdk.amazonaws.com/js/aws-sdk-2.4.13.min.js')
 
-var Evaporate = _evaporate_hey
+var Evaporate = X_Evaporate
 
 var WebWorker = function () {};
 WebWorker.prototype.config = undefined;
 WebWorker.prototype._evaporate = undefined;
 WebWorker.prototype.create = function (config) {
   var evapConfig = Object.assign({}, config, {
-    cryptoMd5Method: function (data) { return AWS.util.crypto.md5(data, 'base64'); },
-    cryptoHexEncodedHash256: function (data) { return AWS.util.crypto.sha256(data, 'hex'); }
+    mockLocalStorage: true,
+    cryptoMd5Method: function (data) {
+      console.log('md5', AWS.util.crypto.md5)
+      console.log('md5', AWS.util.crypto.md5(data, 'base64'))
+      return AWS.util.crypto.md5(data, 'base64'); },
+    cryptoHexEncodedHash256: function (data) {
+      console.log('256', AWS.util.crypto.sha256)
+
+      return AWS.util.crypto.sha256(data, 'hex'); }
   });
+  console.log(evapConfig)
   var thisWorker = this;
   Evaporate.create(evapConfig)
       .then(function (e) {
